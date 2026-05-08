@@ -1,0 +1,8 @@
+bin/
+coverage.out
+
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform/terraform.tfvars
