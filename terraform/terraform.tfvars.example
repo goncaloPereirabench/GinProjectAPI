@@ -1,0 +1,21 @@
+environment = "dev"
+location    = "westeurope"
+
+# The first terraform apply may use the public placeholder image.
+# After ACR exists, build this API in Azure with:
+# az acr build --registry <acr_name> --image gin-grocery-api:v1 ..
+#
+# Then set:
+# api_image       = "<acr_login_server>/gin-grocery-api:v1"
+# api_target_port = 8080
+
+jwt_secret         = "replace-with-a-long-random-secret"
+sql_admin_login    = "groceryadmin"
+sql_admin_password = "replace-with-a-strong-sql-password"
+
+api_min_replicas = 0
+api_max_replicas = 3
+
+tags = {
+  owner = "grocery-api-team"
+}
