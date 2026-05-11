@@ -97,7 +97,7 @@ When `DATABASE_DSN` is empty, the app uses the in-memory repositories. That is u
 
 ```powershell
 go mod download
-go run ./cmd/api
+go run ./cmd/api   
 ```
 
 The API listens on `http://localhost:8080`.
