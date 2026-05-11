@@ -1,9 +1,10 @@
 name: Build and Deploy API
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - main`
+      - main
 
 env:
   ACR_NAME: acrgingrocerydevt5n05b
@@ -24,7 +25,7 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Login to ACR
+      - name: Login to Azure Container Registry
         run: az acr login --name $ACR_NAME
 
       - name: Build Docker image
@@ -38,11 +39,10 @@ jobs:
           docker push \
             $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
 
-      - name: Deploy Container App
+      - name: Deploy to Azure Container Apps
         run: |
           az containerapp update \
             --name $CONTAINER_APP_NAME \
             --resource-group $RESOURCE_GROUP \
             --image $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
 
-            
