@@ -265,7 +265,6 @@ resource "azurerm_function_app_flex_consumption" "worker" {
   app_settings = {
     APP_ENV                       = "production"
     DATABASE_DSN                  = local.database_dsn
-    FUNCTIONS_WORKER_RUNTIME      = "custom"
     SERVICEBUS_CONNECTION         = azurerm_servicebus_namespace_authorization_rule.functions_listener.primary_connection_string
     ORDER_EVENTS_QUEUE_NAME       = azurerm_servicebus_queue.order_events.name
     LOW_STOCK_TIMER_SCHEDULE      = var.low_stock_timer_schedule

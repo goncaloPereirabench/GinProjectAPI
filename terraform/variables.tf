@@ -31,7 +31,7 @@ variable "api_image" {
 variable "api_target_port" {
   type        = number
   description = "Container port exposed by the API image. Use 8080 for this Go API."
-  default     = 80
+  default     = 8080
 }
 
 variable "api_cpu" {
