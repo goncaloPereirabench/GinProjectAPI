@@ -1,10 +1,9 @@
-```yaml
 name: Build and Deploy API
 
 on:
   push:
     branches:
-      - main
+      - main`
 
 env:
   ACR_NAME: acrgingrocerydevt5n05b
@@ -30,11 +29,14 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }} .
+          docker build \
+            -t $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }} \
+            .
 
       - name: Push Docker image
         run: |
-          docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+          docker push \
+            $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
 
       - name: Deploy Container App
         run: |
@@ -42,4 +44,4 @@ jobs:
             --name $CONTAINER_APP_NAME \
             --resource-group $RESOURCE_GROUP \
             --image $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
-```
+
