@@ -10,6 +10,7 @@ import (
 	"ginprojectapi/internal/store"
 
 	"github.com/google/uuid"
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 type repositories struct {
@@ -31,7 +32,7 @@ func (r *userRepository) Create(ctx context.Context, user domain.User) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO users (id, email, password_hash, role, created_at)
 		VALUES (@p1, @p2, @p3, @p4, @p5)
-	`, user.ID.String(), user.Email, user.PasswordHash, user.Role, user.CreatedAt)
+	`, toMSSQLUUID(user.ID), user.Email, user.PasswordHash, user.Role, user.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return store.ErrConflict
@@ -54,16 +55,22 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.User
 		SELECT id, email, password_hash, role, created_at
 		FROM users
 		WHERE id = @p1
-	`, id))
+	`, toMSSQLUUID(id)))
 }
 
 func (r *userRepository) scanUser(row *sql.Row) (domain.User, error) {
 	var user domain.User
-	err := row.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
+	var id mssql.UniqueIdentifier
+	err := row.Scan(&id, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, store.ErrNotFound
 	}
-	return user, err
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	user.ID = fromMSSQLUUID(id)
+	return user, nil
 }
 
 type productRepository repositories
@@ -72,7 +79,7 @@ func (r *productRepository) Create(ctx context.Context, product domain.Product) 
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO products (id, name, sku, description, price_cents, stock, active, created_at, updated_at)
 		VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9)
-	`, product.ID, product.Name, product.SKU, product.Description, product.PriceCents, product.Stock, product.Active, product.CreatedAt, product.UpdatedAt)
+	`, toMSSQLUUID(product.ID), product.Name, product.SKU, product.Description, product.PriceCents, product.Stock, product.Active, product.CreatedAt, product.UpdatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return store.ErrConflict
@@ -84,12 +91,13 @@ func (r *productRepository) Create(ctx context.Context, product domain.Product) 
 
 func (r *productRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.Product, error) {
 	var product domain.Product
+	var productID mssql.UniqueIdentifier
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, name, sku, description, price_cents, stock, active, created_at, updated_at
 		FROM products
 		WHERE id = @p1
-	`, id).Scan(
-		&product.ID,
+	`, toMSSQLUUID(id)).Scan(
+		&productID,
 		&product.Name,
 		&product.SKU,
 		&product.Description,
@@ -102,7 +110,12 @@ func (r *productRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.P
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Product{}, store.ErrNotFound
 	}
-	return product, err
+	if err != nil {
+		return domain.Product{}, err
+	}
+
+	product.ID = fromMSSQLUUID(productID)
+	return product, nil
 }
 
 func (r *productRepository) List(ctx context.Context, filter store.ProductFilter) ([]domain.Product, error) {
@@ -122,8 +135,9 @@ func (r *productRepository) List(ctx context.Context, filter store.ProductFilter
 	products := make([]domain.Product, 0)
 	for rows.Next() {
 		var product domain.Product
+		var productID mssql.UniqueIdentifier
 		if err := rows.Scan(
-			&product.ID,
+			&productID,
 			&product.Name,
 			&product.SKU,
 			&product.Description,
@@ -135,6 +149,7 @@ func (r *productRepository) List(ctx context.Context, filter store.ProductFilter
 		); err != nil {
 			return nil, err
 		}
+		product.ID = fromMSSQLUUID(productID)
 		products = append(products, product)
 	}
 	return products, rows.Err()
@@ -151,7 +166,7 @@ func (r *productRepository) Update(ctx context.Context, product domain.Product) 
 		    active = @p7,
 		    updated_at = @p8
 		WHERE id = @p1
-	`, product.ID, product.Name, product.SKU, product.Description, product.PriceCents, product.Stock, product.Active, product.UpdatedAt)
+	`, toMSSQLUUID(product.ID), product.Name, product.SKU, product.Description, product.PriceCents, product.Stock, product.Active, product.UpdatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return store.ErrConflict
@@ -165,7 +180,7 @@ func (r *productRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	result, err := r.db.ExecContext(ctx, `
 		DELETE FROM products
 		WHERE id = @p1
-	`, id)
+	`, toMSSQLUUID(id))
 	if err != nil {
 		return err
 	}
@@ -181,7 +196,7 @@ func (r *cartRepository) Get(ctx context.Context, userID uuid.UUID) (domain.Cart
 		INNER JOIN products p ON p.id = ci.product_id
 		WHERE ci.user_id = @p1
 		ORDER BY p.name
-	`, userID)
+	`, toMSSQLUUID(userID))
 	if err != nil {
 		return domain.Cart{}, err
 	}
@@ -193,9 +208,11 @@ func (r *cartRepository) Get(ctx context.Context, userID uuid.UUID) (domain.Cart
 	}
 	for rows.Next() {
 		var item domain.CartItem
-		if err := rows.Scan(&item.ProductID, &item.ProductName, &item.Quantity, &item.UnitPrice, &item.LineTotal); err != nil {
+		var productID mssql.UniqueIdentifier
+		if err := rows.Scan(&productID, &item.ProductName, &item.Quantity, &item.UnitPrice, &item.LineTotal); err != nil {
 			return domain.Cart{}, err
 		}
+		item.ProductID = fromMSSQLUUID(productID)
 		cart.Items = append(cart.Items, item)
 		cart.TotalCents += item.LineTotal
 	}
@@ -211,8 +228,8 @@ func (r *cartRepository) SetItem(ctx context.Context, userID uuid.UUID, product 
 			UPDATE SET quantity = @p3, updated_at = SYSUTCDATETIME()
 		WHEN NOT MATCHED THEN
 			INSERT (user_id, product_id, quantity, created_at, updated_at)
-			VALUES (@p1, @p2, @p3, SYSUTCDATETIME(), SYSUTCDATETIME());
-	`, userID, product.ID, quantity)
+			VALUES (source.user_id, source.product_id, @p3, SYSUTCDATETIME(), SYSUTCDATETIME());
+	`, toMSSQLUUID(userID), toMSSQLUUID(product.ID), quantity)
 	return err
 }
 
@@ -220,7 +237,7 @@ func (r *cartRepository) RemoveItem(ctx context.Context, userID uuid.UUID, produ
 	_, err := r.db.ExecContext(ctx, `
 		DELETE FROM cart_items
 		WHERE user_id = @p1 AND product_id = @p2
-	`, userID, productID)
+	`, toMSSQLUUID(userID), toMSSQLUUID(productID))
 	return err
 }
 
@@ -228,8 +245,16 @@ func (r *cartRepository) Clear(ctx context.Context, userID uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx, `
 		DELETE FROM cart_items
 		WHERE user_id = @p1
-	`, userID)
+	`, toMSSQLUUID(userID))
 	return err
+}
+
+func toMSSQLUUID(id uuid.UUID) mssql.UniqueIdentifier {
+	return mssql.UniqueIdentifier(id)
+}
+
+func fromMSSQLUUID(id mssql.UniqueIdentifier) uuid.UUID {
+	return uuid.UUID(id)
 }
 
 func rowsAffectedError(result sql.Result) error {

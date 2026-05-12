@@ -65,6 +65,8 @@ api_image       = "<acr_login_server>/gin-grocery-api:v1"
 api_target_port = 8080
 ```
 
+The SQL Server connection string includes `guid conversion=true`. Keep that option enabled because SQL Server stores `UNIQUEIDENTIFIER` values with a different byte order than Go UUID libraries normally expect.
+
 Apply again:
 
 ```powershell
