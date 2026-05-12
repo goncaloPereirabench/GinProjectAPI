@@ -1,7 +1,9 @@
 package http
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"ginprojectapi/internal/service"
@@ -21,6 +23,8 @@ func respond(c *gin.Context, status int, value any) {
 }
 
 func respondError(c *gin.Context, err error) {
+	_ = c.Error(err)
+
 	status := http.StatusInternalServerError
 	code := "internal_error"
 	message := "something went wrong"
@@ -44,10 +48,16 @@ func respondError(c *gin.Context, err error) {
 		message = "email or password is incorrect"
 	default:
 		var validationErrors validator.ValidationErrors
+		var syntaxError *json.SyntaxError
+		var typeError *json.UnmarshalTypeError
 		if errors.As(err, &validationErrors) {
 			status = http.StatusBadRequest
 			code = "validation_failed"
 			message = "one or more request fields are invalid"
+		} else if errors.As(err, &syntaxError) || errors.As(err, &typeError) || errors.Is(err, io.EOF) {
+			status = http.StatusBadRequest
+			code = "invalid_json"
+			message = "request body must be valid JSON"
 		}
 	}
 

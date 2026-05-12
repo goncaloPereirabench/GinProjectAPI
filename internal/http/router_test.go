@@ -77,6 +77,25 @@ func TestProtectedRouteRequiresBearerToken(t *testing.T) {
 	}
 }
 
+func TestRegisterRejectsMalformedJSON(t *testing.T) {
+	router := newTestRouter(60, 20)
+	request := httptest.NewRequest(nethttp.MethodPost, "/v1/auth/register", bytes.NewBufferString("{email:broken}"))
+	request.Header.Set("Content-Type", "application/json")
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var body errorResponse
+	decodeJSON(t, response.Body.Bytes(), &body)
+	if body.Error != "invalid_json" {
+		t.Fatalf("expected invalid_json, got %+v", body)
+	}
+}
+
 func TestRateLimitReturnsTooManyRequests(t *testing.T) {
 	router := newTestRouter(1, 1)
 

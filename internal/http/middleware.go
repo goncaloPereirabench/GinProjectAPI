@@ -31,13 +31,20 @@ func StructuredLogger(logger *slog.Logger) gin.HandlerFunc {
 		start := time.Now()
 		c.Next()
 
-		logger.Info("http request",
+		attrs := []any{
 			"method", c.Request.Method,
 			"path", c.FullPath(),
 			"status", c.Writer.Status(),
 			"latency_ms", time.Since(start).Milliseconds(),
 			"request_id", c.Writer.Header().Get("X-Request-ID"),
 			"client_ip", c.ClientIP(),
+		}
+		if len(c.Errors) > 0 {
+			attrs = append(attrs, "errors", c.Errors.String())
+		}
+
+		logger.Info("http request",
+			attrs...,
 		)
 	}
 }
