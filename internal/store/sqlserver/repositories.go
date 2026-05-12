@@ -31,7 +31,7 @@ func (r *userRepository) Create(ctx context.Context, user domain.User) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO users (id, email, password_hash, role, created_at)
 		VALUES (@p1, @p2, @p3, @p4, @p5)
-	`, user.ID, user.Email, user.PasswordHash, user.Role, user.CreatedAt)
+	`, user.ID.String(), user.Email, user.PasswordHash, user.Role, user.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return store.ErrConflict
