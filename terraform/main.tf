@@ -190,6 +190,11 @@ resource "azurerm_container_app" "api" {
       }
 
       env {
+        name  = "CORS_ALLOWED_ORIGINS"
+        value = join(",", var.cors_allowed_origins)
+      }
+
+      env {
         name        = "SERVICEBUS_SEND_CONNECTION"
         secret_name = "servicebus-send-connection"
       }

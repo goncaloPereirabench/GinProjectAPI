@@ -82,6 +82,12 @@ variable "rate_limit_burst" {
   default     = 20
 }
 
+variable "cors_allowed_origins" {
+  type        = list(string)
+  description = "Exact browser origins allowed to call the API, for example the React frontend Container App URL."
+  default     = []
+}
+
 variable "sql_admin_login" {
   type        = string
   description = "Azure SQL administrator login."

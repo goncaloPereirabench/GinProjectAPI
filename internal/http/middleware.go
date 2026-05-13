@@ -2,7 +2,10 @@ package http
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +61,52 @@ func SecurityHeaders() gin.HandlerFunc {
 	}
 }
 
+func CORS(cfg config.CORSConfig) gin.HandlerFunc {
+	allowedOrigins := make(map[string]struct{}, len(cfg.AllowedOrigins))
+	for _, origin := range cfg.AllowedOrigins {
+		if normalized := normalizeOrigin(origin); normalized != "" {
+			allowedOrigins[normalized] = struct{}{}
+		}
+	}
+
+	methods := strings.Join(cfg.AllowedMethods, ", ")
+	headers := strings.Join(cfg.AllowedHeaders, ", ")
+	exposedHeaders := strings.Join(cfg.ExposedHeaders, ", ")
+	maxAge := int(cfg.MaxAge.Seconds())
+
+	return func(c *gin.Context) {
+		origin := normalizeOrigin(c.GetHeader("Origin"))
+		if origin == "" {
+			c.Next()
+			return
+		}
+
+		c.Header("Vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers")
+		if _, ok := allowedOrigins[origin]; !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{
+				Error:   "origin_not_allowed",
+				Message: "this origin is not allowed to call the API",
+			})
+			return
+		}
+
+		// Browsers require these headers before they allow frontend JavaScript
+		// to send Authorization headers or read selected response headers.
+		c.Header("Access-Control-Allow-Origin", origin)
+		c.Header("Access-Control-Allow-Methods", methods)
+		c.Header("Access-Control-Allow-Headers", headers)
+		c.Header("Access-Control-Expose-Headers", exposedHeaders)
+		c.Header("Access-Control-Max-Age", strconv.Itoa(maxAge))
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func AuthRequired(jwtManager *service.JWTManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := bearerToken(c.GetHeader("Authorization"))
@@ -83,6 +132,27 @@ func AuthRequired(jwtManager *service.JWTManager) gin.HandlerFunc {
 		c.Set(contextRole, claims.Role)
 		c.Next()
 	}
+}
+
+func normalizeOrigin(origin string) string {
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Path != "" && parsed.Path != "/") {
+		return ""
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return ""
+	}
+
+	host := strings.ToLower(parsed.Host)
+	if hostname, port, err := net.SplitHostPort(host); err == nil {
+		host = net.JoinHostPort(strings.ToLower(hostname), port)
+	}
+	return parsed.Scheme + "://" + host
 }
 
 type visitor struct {

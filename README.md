@@ -89,9 +89,12 @@ JWT_SECRET=replace-with-a-long-random-secret
 JWT_ACCESS_TTL=15m
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
 RATE_LIMIT_BURST=20
+CORS_ALLOWED_ORIGINS=https://your-react-frontend-container-app.northeurope.azurecontainerapps.io
 ```
 
 When `DATABASE_DSN` is empty, the app uses the in-memory repositories. That is useful for quick local development and unit tests. In `APP_ENV=production`, `DATABASE_DSN` and a real `JWT_SECRET` are required.
+
+`CORS_ALLOWED_ORIGINS` controls which browser frontends may call the API. Use exact origins, for example `https://my-frontend.northeurope.azurecontainerapps.io`, not paths such as `/login`.
 
 ## Run Locally Without SQL Server
 

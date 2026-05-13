@@ -30,7 +30,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	repositories, cleanup, err := buildRepositories(cfg, logger)
+	repositories, readinessChecks, cleanup, err := buildRepositories(cfg, logger)
 	if err != nil {
 		logger.Error("repository initialization failed", "error", err)
 		os.Exit(1)
@@ -45,7 +45,7 @@ func main() {
 		JWT:     jwtManager,
 	}
 
-	router := httpapi.NewRouter(cfg, services, logger)
+	router := httpapi.NewRouter(cfg, services, logger, readinessChecks...)
 	server := &http.Server{
 		Addr:              ":" + cfg.HTTP.Port,
 		Handler:           router,
@@ -73,20 +73,21 @@ func main() {
 	logger.Info("api stopped")
 }
 
-func buildRepositories(cfg config.Config, logger *slog.Logger) (store.Repositories, func(), error) {
+func buildRepositories(cfg config.Config, logger *slog.Logger) (store.Repositories, []httpapi.ReadinessCheck, func(), error) {
 	if cfg.Database.DSN == "" {
 		logger.Warn("DATABASE_DSN is empty; using in-memory repositories for local development")
 		repositories := memory.NewRepositories()
-		return repositories, func() {}, nil
+		return repositories, nil, func() {}, nil
 	}
 
 	db, err := database.OpenSQLServer(cfg.Database)
 	if err != nil {
-		return store.Repositories{}, func() {}, err
+		return store.Repositories{}, nil, func() {}, err
 	}
 
 	repositories := sqlserver.NewRepositories(db)
-	return repositories, func() {
+	readinessChecks := []httpapi.ReadinessCheck{db.PingContext}
+	return repositories, readinessChecks, func() {
 		if err := db.Close(); err != nil {
 			logger.Warn("database close failed", "error", err)
 		}

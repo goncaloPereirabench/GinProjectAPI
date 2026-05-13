@@ -2,11 +2,14 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	nethttp "net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,6 +99,44 @@ func TestRegisterRejectsMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestCORSPreflightAllowsConfiguredFrontendOrigin(t *testing.T) {
+	router := newTestRouter(60, 20)
+	request := httptest.NewRequest(nethttp.MethodOptions, "/v1/cart", nil)
+	request.Header.Set("Origin", "https://frontend.example.com")
+	request.Header.Set("Access-Control-Request-Method", "GET")
+	request.Header.Set("Access-Control-Request-Headers", "authorization,content-type")
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != nethttp.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", response.Code, response.Body.String())
+	}
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "https://frontend.example.com" {
+		t.Fatalf("expected allowed origin header, got %q", got)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(strings.ToLower(got), "authorization") {
+		t.Fatalf("expected authorization to be allowed, got %q", got)
+	}
+}
+
+func TestCORSRejectsUnknownBrowserOrigin(t *testing.T) {
+	router := newTestRouter(60, 20)
+	request := httptest.NewRequest(nethttp.MethodOptions, "/v1/cart", nil)
+	request.Header.Set("Origin", "https://unknown.example.com")
+	request.Header.Set("Access-Control-Request-Method", "GET")
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != nethttp.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("unexpected allow-origin header: %q", got)
+	}
+}
+
 func TestRateLimitReturnsTooManyRequests(t *testing.T) {
 	router := newTestRouter(1, 1)
 
@@ -110,7 +151,34 @@ func TestRateLimitReturnsTooManyRequests(t *testing.T) {
 	}
 }
 
+func TestReadyReturnsUnavailableWhenDependencyFails(t *testing.T) {
+	router := newTestRouterWithReadiness(func(context.Context) error {
+		return errors.New("database unavailable")
+	})
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(nethttp.MethodGet, "/health/ready", nil)
+	router.ServeHTTP(response, request)
+
+	if response.Code != nethttp.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func newTestRouter(requestsPerMinute, burst int) nethttp.Handler {
+	return newTestRouterWithReadiness(nil, requestsPerMinute, burst)
+}
+
+func newTestRouterWithReadiness(check ReadinessCheck, limits ...int) nethttp.Handler {
+	requestsPerMinute := 60
+	burst := 20
+	if len(limits) > 0 {
+		requestsPerMinute = limits[0]
+	}
+	if len(limits) > 1 {
+		burst = limits[1]
+	}
+
 	repositories := memory.NewRepositories()
 	jwtManager := service.NewJWTManager("test-secret", "test-suite", 15*time.Minute)
 	services := service.Services{
@@ -125,9 +193,19 @@ func newTestRouter(requestsPerMinute, burst int) nethttp.Handler {
 			RequestsPerMinute: requestsPerMinute,
 			Burst:             burst,
 		},
+		CORS: config.CORSConfig{
+			AllowedOrigins: []string{"https://frontend.example.com"},
+			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			AllowedHeaders: []string{"Authorization", "Content-Type", "X-Request-ID"},
+			ExposedHeaders: []string{"X-Request-ID"},
+			MaxAge:         12 * time.Hour,
+		},
 	}
 
-	return NewRouter(cfg, services, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if check == nil {
+		return NewRouter(cfg, services, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	}
+	return NewRouter(cfg, services, slog.New(slog.NewTextHandler(io.Discard, nil)), check)
 }
 
 func doJSON(t *testing.T, handler nethttp.Handler, method, path string, body any, token string) *httptest.ResponseRecorder {

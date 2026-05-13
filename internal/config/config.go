@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type Config struct {
 	Database    DatabaseConfig
 	Auth        AuthConfig
 	RateLimit   RateLimitConfig
+	CORS        CORSConfig
 }
 
 type HTTPConfig struct {
@@ -38,6 +40,14 @@ type RateLimitConfig struct {
 	Burst             int
 }
 
+type CORSConfig struct {
+	AllowedOrigins []string
+	AllowedMethods []string
+	AllowedHeaders []string
+	ExposedHeaders []string
+	MaxAge         time.Duration
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		Environment: env("APP_ENV", "development"),
@@ -60,6 +70,13 @@ func Load() (Config, error) {
 			RequestsPerMinute: intEnv("RATE_LIMIT_REQUESTS_PER_MINUTE", 60),
 			Burst:             intEnv("RATE_LIMIT_BURST", 20),
 		},
+		CORS: CORSConfig{
+			AllowedOrigins: csvEnv("CORS_ALLOWED_ORIGINS", defaultCORSOrigins(env("APP_ENV", "development"))),
+			AllowedMethods: csvEnv("CORS_ALLOWED_METHODS", []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+			AllowedHeaders: csvEnv("CORS_ALLOWED_HEADERS", []string{"Authorization", "Content-Type", "X-Request-ID"}),
+			ExposedHeaders: csvEnv("CORS_EXPOSED_HEADERS", []string{"X-Request-ID"}),
+			MaxAge:         durationEnv("CORS_MAX_AGE", 12*time.Hour),
+		},
 	}
 
 	if cfg.Environment == "production" {
@@ -68,6 +85,11 @@ func Load() (Config, error) {
 		}
 		if cfg.Database.DSN == "" {
 			return Config{}, errors.New("DATABASE_DSN must be set in production")
+		}
+		for _, origin := range cfg.CORS.AllowedOrigins {
+			if origin == "*" {
+				return Config{}, errors.New("CORS_ALLOWED_ORIGINS cannot contain * in production")
+			}
 		}
 	}
 
@@ -104,4 +126,31 @@ func durationEnv(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return value
+}
+
+func csvEnv(key string, fallback []string) []string {
+	raw := env(key, "")
+	if raw == "" {
+		return fallback
+	}
+
+	values := strings.Split(raw, ",")
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func defaultCORSOrigins(environment string) []string {
+	if environment == "production" {
+		return []string{}
+	}
+	return []string{
+		"http://localhost:3000",
+		"http://localhost:5173",
+	}
 }

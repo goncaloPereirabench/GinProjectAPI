@@ -14,5 +14,5 @@ locals {
     var.tags
   )
 
-  database_dsn = "sqlserver://${var.sql_admin_login}:${urlencode(var.sql_admin_password)}@${azurerm_mssql_server.main.fully_qualified_domain_name}:1433?database=${azurerm_mssql_database.main.name}&encrypt=true"
+  database_dsn = "sqlserver://${var.sql_admin_login}:${urlencode(var.sql_admin_password)}@${azurerm_mssql_server.main.fully_qualified_domain_name}:1433?database=${azurerm_mssql_database.main.name}&encrypt=true&guid+conversion=true"
 }

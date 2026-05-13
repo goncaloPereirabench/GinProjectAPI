@@ -63,9 +63,14 @@ Then update `terraform.tfvars`:
 ```hcl
 api_image       = "<acr_login_server>/gin-grocery-api:v1"
 api_target_port = 8080
+cors_allowed_origins = [
+  "https://<your-react-frontend-container-app>.<region>.azurecontainerapps.io"
+]
 ```
 
 The SQL Server connection string includes `guid conversion=true`. Keep that option enabled because SQL Server stores `UNIQUEIDENTIFIER` values with a different byte order than Go UUID libraries normally expect.
+
+`cors_allowed_origins` must contain the exact browser origin of the React frontend. CORS is enforced by browsers, not by server-to-server clients. The API still accepts non-browser requests without an `Origin` header, such as health probes, Azure platform calls, curl, and backend jobs.
 
 Apply again:
 

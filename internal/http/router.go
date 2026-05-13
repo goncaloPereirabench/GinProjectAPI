@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(cfg config.Config, services service.Services, logger *slog.Logger) http.Handler {
+func NewRouter(cfg config.Config, services service.Services, logger *slog.Logger, readinessChecks ...ReadinessCheck) http.Handler {
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -21,9 +21,10 @@ func NewRouter(cfg config.Config, services service.Services, logger *slog.Logger
 		StructuredLogger(logger),
 		gin.Recovery(),
 		SecurityHeaders(),
+		CORS(cfg.CORS),
 	)
 
-	health := NewHealthHandler()
+	health := NewHealthHandler(readinessChecks...)
 	router.GET("/health/live", health.Live)
 	router.GET("/health/ready", health.Ready)
 
